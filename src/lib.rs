@@ -33,7 +33,6 @@ enum PosixEscapeMode
 
 fn split_off_front_inplace_mut<'a, T>(slice: &mut &'a mut [T], idx: usize) -> &'a mut [T] {
 	let (ret, tail) = ::std::mem::replace(slice, &mut []).split_at_mut(idx);
-	//let (ret, tail) = slice.split_at_mut(idx);
 	*slice = tail;
 	ret
 }
@@ -96,8 +95,8 @@ impl<'a> Iterator for PosixShellWords<'a>
 					assert!(outpos < i);
 					self.0[i] = 0;	// DEFENSIVE. Mangle string at read position to ensure no strays
 					self.0[outpos] = b;
-					outpos += 1;
 				}
+				outpos += 1;
 			}
 		}
 		// Consume multiple separators
