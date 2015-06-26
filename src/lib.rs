@@ -5,6 +5,7 @@
 #![crate_name="cmdline_words_parser"]
 #![cfg_attr(nightly, feature(core))]
 
+/// Extension trait providing mutable command-line parsing on strings
 pub trait StrExt
 {
 	fn parse_cmdline_words(&mut self) -> PosixShellWords;
@@ -17,7 +18,12 @@ impl StrExt for str
 		PosixShellWords(unsafe { ::std::mem::transmute(self) })
 	}
 }
-
+impl StrExt for String {
+	fn parse_cmdline_words(&mut self) -> PosixShellWords {
+		// SAFE: Parser should ensure that once complete, only correct UTF-8 is visible
+		PosixShellWords(unsafe { &mut **self.as_mut_vec() })
+	}
+}
 
 pub struct PosixShellWords<'a>(&'a mut [u8]);
 
@@ -69,12 +75,14 @@ impl<'a> Iterator for PosixShellWords<'a>
 						None
 						},
 					b'"' => {
-						mode = PosixEscapeMode::SingleQuote;
+						mode = PosixEscapeMode::DoubleQuote;
 						None
 						},
 					v @ _ => Some(v),
 					},
-				PosixEscapeMode::OuterSlash => match byte
+				PosixEscapeMode::OuterSlash => {
+					mode = PosixEscapeMode::Outer;
+					match byte
 					{
 					v @ b' ' => Some(v),
 					v @ b'\t' => Some(v),
@@ -87,8 +95,15 @@ impl<'a> Iterator for PosixShellWords<'a>
 					b'r' => Some(b'\r'),
 					b't' => Some(b'\t'),
 					_ => None,	// TODO: What to to on an invalid escape?
-					},
-				_ => unimplemented!(),
+					}},
+				PosixEscapeMode::SingleQuote =>
+					panic!("TODO: SingleQuote"),
+				PosixEscapeMode::SingleQuoteSlash =>
+					panic!("TODO: SingleQuoteSlash"),
+				PosixEscapeMode::DoubleQuote =>
+					panic!("TODO: DoubleQuote"),
+				PosixEscapeMode::DoubleQuoteSlash =>
+					panic!("TODO: DoubleQuoteSlash"),
 				};
 			if let Some(b) = out {
 				if outpos != i {
