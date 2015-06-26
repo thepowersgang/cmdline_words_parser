@@ -96,14 +96,50 @@ impl<'a> Iterator for PosixShellWords<'a>
 					b't' => Some(b'\t'),
 					_ => None,	// TODO: What to to on an invalid escape?
 					}},
-				PosixEscapeMode::SingleQuote =>
-					panic!("TODO: SingleQuote"),
-				PosixEscapeMode::SingleQuoteSlash =>
-					panic!("TODO: SingleQuoteSlash"),
-				PosixEscapeMode::DoubleQuote =>
-					panic!("TODO: DoubleQuote"),
-				PosixEscapeMode::DoubleQuoteSlash =>
-					panic!("TODO: DoubleQuoteSlash"),
+				PosixEscapeMode::SingleQuote => match byte
+					{
+					b'\\' => {
+						mode = PosixEscapeMode::SingleQuoteSlash;
+						None
+						},
+					b'\'' => {
+						mode = PosixEscapeMode::Outer;
+						None
+						},
+					v @ _ => Some(v),
+					},
+				PosixEscapeMode::SingleQuoteSlash => {
+					mode = PosixEscapeMode::SingleQuote;
+					match byte
+					{
+					v @ b'\'' => Some(v),
+					v @ b'\\' => Some(v),
+					_ => None,	// TODO: What to to on an invalid escape?
+					}},
+				PosixEscapeMode::DoubleQuote => match byte
+					{
+					b'\\' => {
+						mode = PosixEscapeMode::DoubleQuoteSlash;
+						None
+						},
+					b'"' => {
+						mode = PosixEscapeMode::Outer;
+						None
+						},
+					v @ _ => Some(v),
+					},
+				PosixEscapeMode::DoubleQuoteSlash => {
+					mode = PosixEscapeMode::DoubleQuote;
+					match byte
+					{
+					v @ b'\'' => Some(v),
+					v @ b'\"' => Some(v),
+					v @ b'\\' => Some(v),
+					b'n' => Some(b'\n'),
+					b'r' => Some(b'\r'),
+					b't' => Some(b'\t'),
+					_ => None,	// TODO: What to to on an invalid escape?
+					}},
 				};
 			if let Some(b) = out {
 				if outpos != i {

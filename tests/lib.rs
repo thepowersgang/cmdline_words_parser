@@ -26,11 +26,12 @@ fn escaped_spaces()
 #[test]
 fn semi_complex()
 {
-	let mut s = String::from("Hello world \"space separated\" escaped\\ string");
+	let mut s = String::from(r##"Hello world "double quoted (\")" '"single quoted (\')"'  escaped\ string"##);
 	let mut iter = s.parse_cmdline_words();
 	assert_eq!(iter.next(), Some("Hello"));
 	assert_eq!(iter.next(), Some("world"));
-	assert_eq!(iter.next(), Some("space separated"));
+	assert_eq!(iter.next(), Some("double quoted (\")"));
+	assert_eq!(iter.next(), Some("\"single quoted (')\""));
 	assert_eq!(iter.next(), Some("escaped string"));
 	assert_eq!(iter.next(), None);
 }
