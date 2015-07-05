@@ -3,7 +3,7 @@
  */
 #![crate_type="lib"]
 #![crate_name="cmdline_words_parser"]
-#![cfg_attr(nightly, feature(core))]
+#![cfg_attr(nightly, feature(core,core_slice_ext))]
 
 /// Extension trait providing mutable command-line parsing on strings
 pub trait StrExt
