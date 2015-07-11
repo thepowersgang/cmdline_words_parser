@@ -3,29 +3,54 @@
  */
 #![crate_type="lib"]
 #![crate_name="cmdline_words_parser"]
-#![cfg_attr(nightly, feature(core,core_slice_ext))]
+#![cfg_attr(nightly, feature(core_slice_ext))]
 
 /// Extension trait providing mutable command-line parsing on strings
 pub trait StrExt
 {
-	fn parse_cmdline_words(&mut self) -> PosixShellWords;
+	type OutSlice: ?Sized + StrExtOut;
+	fn parse_cmdline_words(&mut self) -> PosixShellWords<Self::OutSlice>;
 }
 
 impl StrExt for str
 {
-	fn parse_cmdline_words(&mut self) -> PosixShellWords {
+	type OutSlice = str;
+	fn parse_cmdline_words(&mut self) -> PosixShellWords<str> {
 		// SAFE: Should be ensuring correct (visible) UTF-8
-		PosixShellWords(unsafe { ::std::mem::transmute(self) })
+		PosixShellWords::new(unsafe { ::std::mem::transmute(self) })
+	}
+}
+impl StrExt for ::std::ffi::OsStr
+{
+	type OutSlice = ::std::ffi::OsStr;
+	fn parse_cmdline_words(&mut self) -> PosixShellWords<Self::OutSlice> {
+		// SAFE: Should be ensuring correct (visible) UTF-8
+		PosixShellWords::new(unsafe { ::std::mem::transmute(self) })
 	}
 }
 impl StrExt for String {
-	fn parse_cmdline_words(&mut self) -> PosixShellWords {
+	type OutSlice = str;
+	fn parse_cmdline_words(&mut self) -> PosixShellWords<Self::OutSlice> {
 		// SAFE: Parser should ensure that once complete, only correct UTF-8 is visible
-		PosixShellWords(unsafe { &mut **self.as_mut_vec() })
+		PosixShellWords::new(unsafe { &mut **self.as_mut_vec() })
 	}
 }
 
-pub struct PosixShellWords<'a>(&'a mut [u8]);
+
+/// Trait used to parameterise output types for StrExt
+pub trait StrExtOut {
+	fn from_bytes(bytes: &[u8]) -> Option<&Self>;
+}
+impl StrExtOut for str {
+	fn from_bytes(bytes: &[u8]) -> Option<&Self> {
+		::std::str::from_utf8(bytes).ok()
+	}
+}
+impl StrExtOut for ::std::ffi::OsStr {
+	fn from_bytes(bytes: &[u8]) -> Option<&Self> {
+		Some( ::std::ffi::OsStr::new(bytes) )
+	}
+}
 
 enum PosixEscapeMode
 {
@@ -43,10 +68,20 @@ fn split_off_front_inplace_mut<'a, T>(slice: &mut &'a mut [T], idx: usize) -> &'
 	ret
 }
 
-impl<'a> Iterator for PosixShellWords<'a>
+
+pub struct PosixShellWords<'a,T:?Sized+StrExtOut>(&'a mut [u8], ::std::marker::PhantomData<T>);
+
+impl<'a, T: ?Sized + StrExtOut> PosixShellWords<'a, T>
 {
-	type Item = &'a str;
-	fn next(&mut self) -> Option<&'a str> {
+	fn new(input_bytes: &mut [u8]) -> PosixShellWords<T> {
+		PosixShellWords(input_bytes, ::std::marker::PhantomData::<T>)
+	}
+}
+
+impl<'a, T: ?Sized + StrExtOut> Iterator for PosixShellWords<'a, T>
+{
+	type Item = &'a T;
+	fn next(&mut self) -> Option<&'a T> {
 		// 1. Check for an empty string, this means the end has been reached.
 		if self.0.len() == 0 {
 			return None;
@@ -157,7 +192,7 @@ impl<'a> Iterator for PosixShellWords<'a>
 		}
 		
 		let ret = &split_off_front_inplace_mut(&mut self.0, endpos)[..outpos];
-		Some( ::std::str::from_utf8(ret).unwrap() )	//expect("POSIX Word spliting caused UTF-8 inconsistency") )
+		Some( T::from_bytes(ret).expect("POSIX Word spliting caused UTF-8 inconsistency") )
 	}
 }
 
