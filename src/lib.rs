@@ -24,7 +24,7 @@ impl StrExt for ::std::ffi::OsStr
 {
 	type OutSlice = ::std::ffi::OsStr;
 	fn parse_cmdline_words(&mut self) -> PosixShellWords<Self::OutSlice> {
-		// SAFE: Should be ensuring correct (visible) UTF-8
+		// TODO: Check that OsStr is ASCII based (i.e. UTF-8, or WTF-8, or a ascii-based codepage)
 		PosixShellWords::new(unsafe { ::std::mem::transmute(self) })
 	}
 }
@@ -48,7 +48,8 @@ impl StrExtOut for str {
 }
 impl StrExtOut for ::std::ffi::OsStr {
 	fn from_bytes(bytes: &[u8]) -> Option<&Self> {
-		Some( ::std::ffi::OsStr::new(bytes) )
+		// SAFE: OsStr is bytes, and string is only modified on ASCII characters
+		Some( unsafe { ::std::mem::transmute(bytes) } )
 	}
 }
 
