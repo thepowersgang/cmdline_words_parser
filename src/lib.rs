@@ -79,7 +79,7 @@ impl<'a, T: ?Sized + StrExtOut> PosixShellWords<'a, T>
 	}
 }
 
-impl<'a, T: ?Sized + StrExtOut> Iterator for PosixShellWords<'a, T>
+impl<'a, T: ?Sized + StrExtOut + 'a> Iterator for PosixShellWords<'a, T>
 {
 	type Item = &'a T;
 	fn next(&mut self) -> Option<&'a T> {
