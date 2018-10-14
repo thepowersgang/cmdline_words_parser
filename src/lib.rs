@@ -48,7 +48,7 @@ impl StrExt for [u8]
 		PosixShellWords::new(self)
 	}
 }
-#[cfg(all(not(feature="no_std"), unix))]
+#[cfg(all(not(feature="no_std"), any(unix, target_os="tifflin")))]
 impl StrExt for ::std::ffi::OsStr
 {
 	type OutSlice = ::std::ffi::OsStr;
@@ -83,7 +83,7 @@ impl StrExtOut for [u8] {
 		Some(bytes)
 	}
 }
-#[cfg(all(not(feature="no_std"), unix))]
+#[cfg(all(not(feature="no_std"), any(unix, target_os="tifflin")))]
 impl StrExtOut for ::std::ffi::OsStr {
 	fn from_bytes(bytes: &[u8]) -> Option<&Self> {
 		// SAFE: OsStr is bytes, and string is only modified on ASCII characters
@@ -130,6 +130,7 @@ impl<'a, T: ?Sized + StrExtOut + 'a> Iterator for PosixShellWords<'a, T>
 	fn next(&mut self) -> Option<&'a T> {
 		// 1. Check for an empty string, this means the end has been reached.
 		if self.0.len() == 0 {
+			// TODO: Error when waiting for a character?
 			return None;
 		}
 		
