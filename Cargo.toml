@@ -1,6 +1,6 @@
 [package]
 name = "cmdline_words_parser"
-version = "0.1.0"
+version = "0.2.0"
 authors = [ "John Hodge <tpg@mutabah.net>" ]
 description = "Provides iterators over 'words' in a string, using command-line escaping rules. Intended for use where extra heap allocations are undesirable"
 repository = "https://github.com/thepowersgang/cmdline_words_parser"
@@ -9,6 +9,6 @@ keywords = ["command-line", "parser", "words"]
 license = "MIT"
 
 [features]
-
-no_std = []
-
+default = ["std"]
+std = ["alloc"]
+alloc = []

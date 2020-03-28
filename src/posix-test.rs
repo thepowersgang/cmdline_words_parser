@@ -1,14 +1,13 @@
-//
-
-extern crate cmdline_words_parser;
-
-use cmdline_words_parser::StrExt;
+//!
+//! Tests for the POSIX/UNIX parser
+//!
+use crate::parse_posix;
 
 #[test]
 fn non_escaped()
 {
 	let mut s = String::from("Hello world");
-	let mut iter = s.parse_cmdline_words();
+	let mut iter = parse_posix(&mut s);
 	assert_eq!(iter.next(), Some("Hello"));
 	assert_eq!(iter.next(), Some("world"));
 	assert_eq!(iter.next(), None);
@@ -18,7 +17,7 @@ fn non_escaped()
 fn escaped_spaces()
 {
 	let mut s = String::from("Hello\\ world");
-	let mut iter = s.parse_cmdline_words();
+	let mut iter = parse_posix(&mut s);
 	assert_eq!(iter.next(), Some("Hello world"));
 	assert_eq!(iter.next(), None);
 }
@@ -27,7 +26,7 @@ fn escaped_spaces()
 fn semi_complex()
 {
 	let mut s = String::from(r##"Hello world "double quoted (\")" '"single quoted (\')"'  escaped\ string"##);
-	let mut iter = s.parse_cmdline_words();
+	let mut iter = parse_posix(&mut s);
 	assert_eq!(iter.next(), Some("Hello"));
 	assert_eq!(iter.next(), Some("world"));
 	assert_eq!(iter.next(), Some("double quoted (\")"));

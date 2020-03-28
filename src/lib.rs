@@ -1,245 +1,127 @@
-//! This crate provides a allocation-less way of parsing shell-escaped strings (which are escaped to be longer than the source)
+//! This crate provides a allocation-less way of parsing escaped strings (as the escaped form is longer
+//! than the original).
 //!
-//! The trait `StrExt` provides a method `parse_cmdline_words` that returns an iterator of shell-escaped arguments/"words".
-//! 
+//! - [parse_posix] Parses strings using unix shell escaping rules (see [PosixShellWords] for exact rules)
+//!
+//! Note: This crate has no way of handling variable substitions.
 #![crate_type="lib"]
 #![crate_name="cmdline_words_parser"]
-#![cfg_attr(feature="no_std", no_std)]
+#![cfg_attr(not(feature="std"), no_std)]
+#[cfg(feature="alloc")]
+extern crate alloc;
 
-#[cfg(feature="no_std")]
+#[cfg(not(feature="std"))]
 mod std {
 	pub use core::marker;
 	pub use core::mem;
 	pub use core::str;
 }
 
-/// Extension trait providing mutable command-line parsing on strings
+pub use crate::posix::PosixShellWords;
+mod posix;
+//pub use crate::win32::Win32ShellWords;
+//mod win32;
+
+/// Parse string in a UNIX/POSIX-like manner
 ///
 /// ```
-/// use cmdline_words_parser::StrExt;
 /// let mut cmdline = String::from(r"Hello\ World 'Second Argument'");
-/// let mut parse = cmdline.parse_cmdline_words();
+/// let mut parse = ::cmdline_words_parser::parse_posix(&mut cmdline);
 /// assert_eq!( parse.next(), Some("Hello World") );
 /// assert_eq!( parse.next(), Some("Second Argument") );
 /// assert_eq!( parse.next(), None );
 /// ```
-pub trait StrExt
+pub fn parse_posix<T: ?Sized + ByteString>(string: &mut T) -> PosixShellWords<T::OutSlice> {
+	// SAFE: Should be ensuring correct (visible) UTF-8
+	PosixShellWords::new(unsafe { string.as_mut_bytes() })
+}
+///// Parse a string using cmd.exe/win32 escaping rules
+//pub fn parse_win32<T: ?Sized + StrExt>(string: &mut T) -> Win32ShellWords<T::OutSlice> {
+//	Win32ShellWords::new(unsafe { string.as_mut_bytes() })
+//}
+
+/// Trait representing types that can be in-place parsed (i.e. ASCII-compatible byte strings)
+pub trait ByteString
 {
 	/// Output slice type (e.g str or OsStr)
-	type OutSlice: ?Sized + StrExtOut;
-	/// Returns an iterator of POSIX-esque command line arguments
-	fn parse_cmdline_words(&mut self) -> PosixShellWords<Self::OutSlice>;
+	type OutSlice: ?Sized + ByteStringSlice;
+
+	/// Get the string as a mutable sequence of bytes
+	unsafe fn as_mut_bytes(&mut self) -> &mut [u8];
+
+	// TODO: Maybe use this instead of the extension trait?
+	//fn output_from_bytes(bytes: &[u8]) -> Option<&Self::OutSlice>;
 }
 
 /// Parse a rust UTF-8 string, yeilding string slices
-impl StrExt for str
+impl ByteString for str
 {
 	type OutSlice = str;
-	fn parse_cmdline_words(&mut self) -> PosixShellWords<str> {
-		// SAFE: Should be ensuring correct (visible) UTF-8
-		PosixShellWords::new(unsafe { ::std::mem::transmute(self) })
+
+	#[doc(hidden)]
+	/// UNSAFE: Caller mustn't violate UTF-8
+	unsafe fn as_mut_bytes(&mut self) -> &mut [u8] {
+		::std::mem::transmute(self)
 	}
 }
 /// Parse a byte slice as a ASCII (or UTF-8/WTF-8/...) string, returning byte slices
-impl StrExt for [u8]
+impl ByteString for [u8]
 {
 	type OutSlice = [u8];
-	fn parse_cmdline_words(&mut self) -> PosixShellWords<[u8]> {
-		PosixShellWords::new(self)
+	#[doc(hidden)]
+	/// Note: Actually safe
+	unsafe fn as_mut_bytes(&mut self) -> &mut [u8] {
+		self
 	}
 }
-#[cfg(all(not(feature="no_std"), any(unix, target_os="tifflin")))]
-impl StrExt for ::std::ffi::OsStr
+#[cfg(feature="std")]
+impl ByteString for ::std::ffi::OsStr
 {
 	type OutSlice = ::std::ffi::OsStr;
-	fn parse_cmdline_words(&mut self) -> PosixShellWords<Self::OutSlice> {
+	#[doc(hidden)]
+	unsafe fn as_mut_bytes(&mut self) -> &mut [u8] {
 		// NOTE: Type assertion to ensure that assumption holds
 		let _: &[u8] = <_ as ::std::os::unix::ffi::OsStrExt>::as_bytes(self);
-		// TODO: Check that OsStr is ASCII based (i.e. UTF-8, or WTF-8, or a ascii-based codepage)
-		PosixShellWords::new(unsafe { ::std::mem::transmute(self) })
+		// NOTE: OsStr is UTF-8 like on all platforms (Windows uses WTF-8)
+		::std::mem::transmute(self)
 	}
 }
-#[cfg(not(feature="no_std"))]
-impl StrExt for String {
+#[cfg(feature="alloc")]
+impl ByteString for ::alloc::string::String {
 	type OutSlice = str;
-	fn parse_cmdline_words(&mut self) -> PosixShellWords<Self::OutSlice> {
-		// SAFE: Parser should ensure that once complete, only correct UTF-8 is visible
-		PosixShellWords::new(unsafe { &mut **self.as_mut_vec() })
+	#[doc(hidden)]
+	unsafe fn as_mut_bytes(&mut self) -> &mut [u8] {
+		&mut **self.as_mut_vec()
 	}
 }
 
 
-/// Trait used to parameterise output types for StrExt
-pub trait StrExtOut {
+/// Trait representing strings backed by byte arrays
+#[doc(hidden)]
+pub trait ByteStringSlice {
 	fn from_bytes(bytes: &[u8]) -> Option<&Self>;
 }
-impl StrExtOut for str {
+impl ByteStringSlice for str {
 	fn from_bytes(bytes: &[u8]) -> Option<&Self> {
 		::std::str::from_utf8(bytes).ok()
 	}
 }
-impl StrExtOut for [u8] {
+impl ByteStringSlice for [u8] {
 	fn from_bytes(bytes: &[u8]) -> Option<&Self> {
 		Some(bytes)
 	}
 }
-#[cfg(all(not(feature="no_std"), any(unix, target_os="tifflin")))]
-impl StrExtOut for ::std::ffi::OsStr {
+#[cfg(feature="std")]
+impl ByteStringSlice for ::std::ffi::OsStr {
 	fn from_bytes(bytes: &[u8]) -> Option<&Self> {
 		// SAFE: OsStr is bytes, and string is only modified on ASCII characters
 		Some( unsafe { ::std::mem::transmute(bytes) } )
 	}
 }
 
-enum PosixEscapeMode
-{
-	Outer,
-	OuterSlash,
-	SingleQuote,
-	SingleQuoteSlash,
-	DoubleQuote,
-	DoubleQuoteSlash,
-}
-
+/// Helper: Splits the front off a mutable slice
 fn split_off_front_inplace_mut<'a, T>(slice: &mut &'a mut [T], idx: usize) -> &'a mut [T] {
 	let (ret, tail) = ::std::mem::replace(slice, &mut []).split_at_mut(idx);
 	*slice = tail;
 	ret
 }
-
-/// Iterator yeilding unescaped strings in the standard POSIX shell format
-///
-/// - Splits arguments on whitespace (space, tab, newline, and carriage return)
-/// - Special character escapes (`\n`, `\t`, `\r`) for literal versions of control characters
-/// - Supports single and double-quoted strings
-///  - Single quoted strings only support single quote and backslash escaped (any other character is passed verbatim)
-///  - Double quoted strings support a full set of escaped special characters.
-/// - Interpreted characters can be escaped by prefixing with a backslash
-pub struct PosixShellWords<'a,T:?Sized+StrExtOut>(&'a mut [u8], ::std::marker::PhantomData<T>);
-
-impl<'a, T: ?Sized + StrExtOut> PosixShellWords<'a, T>
-{
-	fn new(input_bytes: &mut [u8]) -> PosixShellWords<T> {
-		PosixShellWords(input_bytes, ::std::marker::PhantomData::<T>)
-	}
-}
-
-impl<'a, T: ?Sized + StrExtOut + 'a> Iterator for PosixShellWords<'a, T>
-{
-	type Item = &'a T;
-	fn next(&mut self) -> Option<&'a T> {
-		// 1. Check for an empty string, this means the end has been reached.
-		if self.0.len() == 0 {
-			// TODO: Error when waiting for a character?
-			return None;
-		}
-		
-		// 2. Iterate byte-wise along string until something special is hit
-		let mut outpos = 0;
-		let mut endpos = self.0.len();
-		let mut mode = PosixEscapeMode::Outer;
-		for i in 0 .. self.0.len()
-		{
-			let byte = self.0[i];
-			let out = match mode
-				{
-				PosixEscapeMode::Outer => match byte
-					{
-					b' ' => { endpos = i; break; },
-					// TODO: Should tab/newline/return be breaks too?
-					b'\t' | b'\n' | b'\r' => { endpos = i; break; },
-					b'\\' => {
-						mode = PosixEscapeMode::OuterSlash;
-						None
-						},
-					b'\'' => {
-						mode = PosixEscapeMode::SingleQuote;
-						None
-						},
-					b'"' => {
-						mode = PosixEscapeMode::DoubleQuote;
-						None
-						},
-					v @ _ => Some(v),
-					},
-				PosixEscapeMode::OuterSlash => {
-					mode = PosixEscapeMode::Outer;
-					match byte
-					{
-					v @ b' ' => Some(v),
-					v @ b'\t' => Some(v),
-					v @ b'\n' => Some(v),
-					v @ b'\r' => Some(v),
-					v @ b'\'' => Some(v),
-					v @ b'\"' => Some(v),
-					v @ b'\\' => Some(v),
-					b'n' => Some(b'\n'),
-					b'r' => Some(b'\r'),
-					b't' => Some(b'\t'),
-					_ => None,	// TODO: What to to on an invalid escape?
-					}},
-				PosixEscapeMode::SingleQuote => match byte
-					{
-					b'\\' => {
-						mode = PosixEscapeMode::SingleQuoteSlash;
-						None
-						},
-					b'\'' => {
-						mode = PosixEscapeMode::Outer;
-						None
-						},
-					v @ _ => Some(v),
-					},
-				PosixEscapeMode::SingleQuoteSlash => {
-					mode = PosixEscapeMode::SingleQuote;
-					match byte
-					{
-					v @ b'\'' => Some(v),
-					v @ b'\\' => Some(v),
-					_ => None,	// TODO: What to to on an invalid escape?
-					}},
-				PosixEscapeMode::DoubleQuote => match byte
-					{
-					b'\\' => {
-						mode = PosixEscapeMode::DoubleQuoteSlash;
-						None
-						},
-					b'"' => {
-						mode = PosixEscapeMode::Outer;
-						None
-						},
-					v @ _ => Some(v),
-					},
-				PosixEscapeMode::DoubleQuoteSlash => {
-					mode = PosixEscapeMode::DoubleQuote;
-					match byte
-					{
-					v @ b'\'' => Some(v),
-					v @ b'\"' => Some(v),
-					v @ b'\\' => Some(v),
-					b'n' => Some(b'\n'),
-					b'r' => Some(b'\r'),
-					b't' => Some(b'\t'),
-					_ => None,	// TODO: What to to on an invalid escape?
-					}},
-				};
-			if let Some(b) = out {
-				if outpos != i {
-					assert!(outpos < i);
-					self.0[i] = 0;	// DEFENSIVE. Mangle string at read position to ensure no strays
-					self.0[outpos] = b;
-				}
-				outpos += 1;
-			}
-		}
-		// Consume multiple separators
-		while endpos < self.0.len() && self.0[endpos] == b' ' {
-			self.0[endpos] = 0;
-			endpos += 1;
-		}
-		
-		let ret = &split_off_front_inplace_mut(&mut self.0, endpos)[..outpos];
-		Some( T::from_bytes(ret).expect("POSIX Word spliting caused UTF-8 inconsistency") )
-	}
-}
-
