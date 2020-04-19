@@ -81,7 +81,10 @@ impl ByteString for ::std::ffi::OsStr
 	#[doc(hidden)]
 	unsafe fn as_mut_bytes(&mut self) -> &mut [u8] {
 		// NOTE: Type assertion to ensure that assumption holds
-		let _: &[u8] = <_ as ::std::os::unix::ffi::OsStrExt>::as_bytes(self);
+		#[cfg(unix)]
+		fn _type_assert(v: &::std::ffi::OsStr) {
+			let _: &[u8] = <_ as ::std::os::unix::ffi::OsStrExt>::as_bytes(v);
+		}
 		// NOTE: OsStr is UTF-8 like on all platforms (Windows uses WTF-8)
 		::std::mem::transmute(self)
 	}
